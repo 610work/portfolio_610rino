@@ -1,0 +1,1495 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>フレーム当てクイズ</title>
+<meta name="description" content="車の骨格（フレーム）の部位名を3Dモデルで当てるクイズゲーム">
+<meta property="og:title" content="フレーム当てクイズ">
+<meta property="og:description" content="車の骨格（フレーム）の部位名を3Dモデルで当てるクイズゲーム">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#1a2035; font-family:'Segoe UI','Hiragino Sans','Yu Gothic',sans-serif; color:#e0e8ff; overflow:hidden; height:100vh; height:100dvh; display:flex; flex-direction:column; }
+  button, .preview-chip, .kb-key { touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+
+  #header { display:flex; align-items:center; justify-content:space-between; padding:10px 20px; background:rgba(17,24,39,0.95); border-bottom:1px solid rgba(96,165,250,0.2); flex-shrink:0; }
+  #title { font-size:18px; font-weight:700; letter-spacing:2px; color:#93c5fd; text-shadow:0 0 16px rgba(147,197,253,0.5); }
+  #score-area { display:flex; gap:16px; }
+  .score-box { background:rgba(30,58,95,0.6); border:1px solid rgba(96,165,250,0.3); border-radius:8px; padding:4px 14px; text-align:center; }
+  .score-label { color:#64748b; font-size:10px; letter-spacing:1px; }
+  .score-val { color:#60a5fa; font-size:20px; font-weight:700; }
+
+  #canvas-container { flex:1; position:relative; overflow:hidden; }
+  canvas { display:block; width:100%!important; height:100%!important; }
+
+  /* クイズパネル（非表示） */
+  #quiz-panel { display:none; }
+  /* 新レイアウト */
+  #answer-top { display:none; flex-shrink:0; background:rgba(10,14,26,0.97); border-bottom:1px solid rgba(96,165,250,0.2); padding:8px 20px; align-items:center; gap:14px; z-index:20; }
+  #answer-top.active { display:flex; }
+  #main-middle { display:flex; flex:1; min-height:0; overflow:hidden; }
+  #keyboard-panel { display:none; flex-direction:column; width:310px; flex-shrink:0; min-height:0; background:rgba(8,12,24,0.98); border-right:1px solid rgba(96,165,250,0.15); padding:8px; gap:6px; overflow:hidden; }
+  #keyboard-panel.active { display:flex; }
+  #progress-quiz { display:flex; gap:5px; justify-content:center; flex-wrap:wrap; }
+  .pq-dot { width:10px; height:10px; border-radius:50%; background:#1e3a5f; border:1px solid #374151; transition:all 0.3s; }
+  .pq-dot.done-correct { background:#22c55e; border-color:#22c55e; }
+  .pq-dot.done-wrong   { background:#ef4444; border-color:#ef4444; }
+  .pq-dot.current      { background:#3b82f6; border-color:#60a5fa; box-shadow:0 0 6px #3b82f6; }
+  #question-text { font-size:14px; color:#94a3b8; letter-spacing:1px; white-space:nowrap; flex:1; }
+  #input-area { display:flex; gap:8px; align-items:center; }
+  #answer-input { width:280px; padding:10px 16px; background:rgba(10,18,40,0.95); border:2px solid #4a6fa5; border-radius:10px; color:#f0f6ff; font-size:18px; font-weight:700; font-family:inherit; letter-spacing:3px; outline:none; transition:border-color 0.2s,box-shadow 0.2s; caret-color:#60a5fa; cursor:default; user-select:none; -webkit-user-select:none; box-shadow:0 0 8px rgba(96,165,250,0.2); }
+  /* readonlyでもグレーにしない */
+  #answer-input[readonly] { background:rgba(17,24,39,0.9); color:#e2e8f0; cursor:default; opacity:1; }
+  #answer-input::placeholder { color:#4b5563; }
+  #answer-input:focus { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,0.15); }
+  #answer-input.correct { border-color:#22c55e!important; box-shadow:0 0 0 3px rgba(34,197,94,0.15)!important; background:rgba(20,83,45,0.4)!important; color:#86efac!important; }
+  #answer-input.wrong   { border-color:#ef4444!important; box-shadow:0 0 0 3px rgba(239,68,68,0.15)!important; background:rgba(69,10,10,0.4)!important; color:#fca5a5!important; }
+  #submit-btn { padding:12px 28px; background:linear-gradient(135deg,#1d4ed8,#3b82f6); border:none; border-radius:10px; color:white; font-size:15px; font-weight:700; cursor:pointer; letter-spacing:1px; transition:all 0.2s; box-shadow:0 0 14px rgba(59,130,246,0.3); white-space:nowrap; }
+  #submit-btn:hover { transform:translateY(-1px); }
+  #submit-btn:disabled { opacity:0.4; cursor:default; transform:none; }
+  #answer-hint { font-size:11px; color:#4b5563; min-height:14px; white-space:nowrap; flex:1; text-align:right; }
+  #answer-hint.wrong-hint { color:#f87171; }
+
+  #feedback { position:absolute; top:32%; left:50%; transform:translate(-50%,-50%); font-size:56px; font-weight:900; pointer-events:none; opacity:0; z-index:30; text-shadow:0 0 30px currentColor; transition:opacity 0.15s; letter-spacing:4px; white-space:nowrap; }
+  #feedback.show { opacity:1; }
+  #feedback.correct { color:#22c55e; }
+  #feedback.wrong   { color:#ef4444; }
+  #correct-answer-banner { position:absolute; top:52%; left:50%; transform:translate(-50%,-50%); background:rgba(15,23,42,0.92); border:1px solid #ef4444; border-radius:10px; padding:10px 24px; color:#fca5a5; font-size:14px; text-align:center; z-index:31; opacity:0; pointer-events:none; transition:opacity 0.15s; white-space:nowrap; }
+  #correct-answer-banner.show { opacity:1; pointer-events:auto; }
+  #correct-answer-banner strong { color:#f87171; font-size:17px; }
+  #next-btn {
+    display:block; margin:10px auto 0; padding:9px 32px;
+    background:linear-gradient(135deg,#1d4ed8,#3b82f6); border:none; border-radius:8px;
+    color:white; font-size:14px; font-weight:700; cursor:pointer; letter-spacing:1px;
+    box-shadow:0 0 12px rgba(59,130,246,0.4);
+  }
+  #next-btn:hover { transform:translateY(-1px); }
+
+  /* ローディング */
+  #loading { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#1a2035; z-index:100; }
+  #loading-title { font-size:22px; font-weight:700; color:#60a5fa; margin-bottom:24px; letter-spacing:3px; }
+  #progress-bar { width:280px; height:6px; background:#1e3a5f; border-radius:3px; overflow:hidden; margin-bottom:14px; }
+  #progress-fill { height:100%; background:linear-gradient(90deg,#3b82f6,#60a5fa); border-radius:3px; width:0%; transition:width 0.3s; box-shadow:0 0 8px #3b82f6; }
+  #loading-msg { color:#64748b; font-size:13px; letter-spacing:1px; }
+
+  /* スタートオーバーレイ */
+  #overlay { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:rgba(10,14,26,0.88); z-index:50; gap:20px; }
+  #overlay.hidden { display:none; }
+  #overlay h2 { font-size:28px; font-weight:900; color:#60a5fa; letter-spacing:4px; text-shadow:0 0 20px rgba(96,165,250,0.5); }
+  #overlay p { color:#94a3b8; font-size:14px; text-align:center; line-height:1.8; }
+  .overlay-btn { background:linear-gradient(135deg,#1d4ed8,#3b82f6); border:none; border-radius:12px; padding:14px 40px; color:white; font-size:16px; font-weight:700; cursor:pointer; letter-spacing:2px; transition:all 0.2s; box-shadow:0 0 20px rgba(59,130,246,0.4); }
+  .overlay-btn:hover { transform:scale(1.05); }
+  .sub-btn {
+    display:inline-flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:10px 24px; min-height:56px;
+    background:rgba(30,58,95,0.6); border:1px solid rgba(96,165,250,0.3);
+    border-radius:12px; color:#93c5fd; font-size:14px; font-weight:700;
+    text-decoration:none; letter-spacing:1px; transition:all 0.2s; cursor:pointer;
+    line-height:1.4; text-align:center;
+  }
+  .sub-btn:hover { background:rgba(59,130,246,0.3); border-color:#60a5fa; }
+  .mix-btn {
+    padding:10px 24px; border-radius:10px; font-size:14px; font-weight:700;
+    cursor:pointer; border:2px solid #374151; background:#111827; color:#94a3b8;
+    transition:all 0.2s; letter-spacing:0.5px;
+  }
+  .mix-btn:hover { border-color:#60a5fa; color:#93c5fd; background:rgba(30,58,95,0.6); }
+  .mix-btn-correct { border-color:#22c55e!important; background:rgba(20,83,45,0.5)!important; color:#86efac!important; }
+  .mix-btn-wrong   { border-color:#ef4444!important; background:rgba(69,10,10,0.5)!important; color:#fca5a5!important; }
+  .mix-btn-selected { border-color:#60a5fa!important; background:rgba(30,58,95,0.7)!important; color:#93c5fd!important; box-shadow:0 0 8px rgba(96,165,250,0.4); }
+
+  /* リザルト画面 */
+  #result-screen {
+    position:absolute; inset:0; background:transparent;
+    z-index:60; display:none; flex-direction:column;
+    align-items:stretch; overflow:hidden; pointer-events:none;
+  }
+  #result-screen.show { display:flex; pointer-events:auto; }
+  #result-top { pointer-events:auto; }
+  /* 3Dは画面全体に敷く背面レイヤー。ボタン類はこの上にオーバーレイする */
+  #result-canvas-area {
+    position:absolute; inset:0; z-index:0; overflow:hidden;
+  }
+  #result-canvas-area canvas { display:block; width:100%!important; height:100%!important; }
+  /* プレビュー/リザルトでは上バーのナビと重なるため操作ヒントは隠す（クイズ中は表示される） */
+  #result-canvas-area #hint { display:none; }
+  #preview-chips { pointer-events:auto; }
+  #result-back-btn { pointer-events:auto; }
+
+  #result-top {
+    position:absolute; top:0; left:0; right:0; z-index:10;
+    width:100%; padding:14px 24px 34px;
+    background:linear-gradient(to bottom, rgba(10,14,26,0.92) 0%, rgba(10,14,26,0.45) 60%, rgba(10,14,26,0) 100%);
+    display:flex; align-items:flex-start; justify-content:space-between; gap:20px;
+    pointer-events:none;
+  }
+  #result-top button, #result-top .prev-nav-btn { pointer-events:auto; }
+  #result-score-block { text-align:center; }
+  #result-score-big { font-size:52px; font-weight:900; color:#fbbf24; text-shadow:0 0 20px rgba(251,191,36,0.4); line-height:1; }
+  #result-comment { color:#94a3b8; font-size:13px; margin-top:4px; }
+
+  /* リザルト内プレビュー */
+  #result-preview { flex:1; display:flex; flex-direction:column; width:100%; overflow:hidden; }
+  #preview-nav {
+    flex-shrink:0; display:flex; align-items:center; justify-content:center;
+    gap:14px; padding:10px 20px;
+    background:rgba(17,24,39,0.8); border-bottom:1px solid rgba(96,165,250,0.1);
+  }
+  .prev-nav-btn { padding:6px 16px; background:rgba(30,58,95,0.6); border:1px solid rgba(96,165,250,0.3); border-radius:8px; color:#93c5fd; font-size:13px; font-weight:700; cursor:pointer; transition:all 0.2s; }
+  .prev-nav-btn:hover { background:rgba(59,130,246,0.4); }
+  #preview-part-info { text-align:center; min-width:200px; display:flex; flex-direction:column; justify-content:center; align-items:center; }
+  #preview-part-name { font-size:26px; font-weight:700; letter-spacing:1px; margin-top:6px; }
+  #preview-part-name.correct-part { color:#4ade80; }
+  #preview-part-name.wrong-part   { color:#f87171; }
+  #preview-part-badge {
+    display:inline-block; font-size:11px; font-weight:700;
+    padding:2px 10px; border-radius:20px; margin-top:3px; letter-spacing:1px;
+  }
+  #preview-part-badge.correct-badge { background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid #22c55e; }
+  #preview-part-badge.wrong-badge   { background:rgba(239,68,68,0.2);  color:#f87171; border:1px solid #ef4444; }
+  #preview-wrong-answer { font-size:16px; color:#94a3b8; margin-top:6px; min-height:22px; line-height:1.6; }
+  #preview-counter { color:#64748b; font-size:12px; min-width:50px; text-align:center; }
+
+  /* 部品チップ一覧：画面下部に浮かせるオーバーレイ。背後の3Dが透けて見える */
+  #preview-chips {
+    position:absolute; left:0; right:0; bottom:56px; z-index:10;
+    display:flex; flex-direction:column; gap:6px; padding:28px 16px 10px;
+    background:linear-gradient(to top, rgba(10,14,26,0.92) 0%, rgba(10,14,26,0.6) 55%, rgba(10,14,26,0) 100%);
+    align-items:center;
+    /* チップが縦を占有しすぎないよう上限を設け、超えた分はスクロール */
+    max-height:52vh; overflow-y:auto;
+  }
+  .preview-chip {
+    padding:8px 16px; border-radius:20px; font-size:15px; font-weight:700;
+    cursor:pointer; border:1px solid #374151; background:#111827; color:#64748b; transition:all 0.2s;
+  }
+  .preview-chip:hover { border-color:#60a5fa; color:#93c5fd; }
+  .preview-chip.active   { background:rgba(59,130,246,0.25); border-color:#60a5fa; color:#93c5fd; }
+  .preview-chip.chip-wrong  { border-color:#ef4444; color:#f87171; background:rgba(239,68,68,0.1); }
+  .preview-chip.chip-alias  { border-color:#fbbf24; color:#fbbf24; background:rgba(251,191,36,0.1); }
+  .preview-chip.chip-alias.active { background:rgba(251,191,36,0.25); }
+  .preview-chip.chip-correct  { border-color:#38bdf8; color:#38bdf8; background:rgba(56,189,248,0.1); }
+  .preview-chip.chip-correct.active { background:rgba(56,189,248,0.25); }
+  /* チップ行 */
+  .chip-row { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; width:100%; }
+  .chip-row-pink   {}
+  .chip-row-yellow {}
+  .chip-row-blue   {}
+  /* プレビューグループ色 */
+  .preview-chip.chip-group-pink   { border-color:#ff3366; color:#ff6688; background:rgba(255,51,102,0.1); }
+  .preview-chip.chip-group-pink.active { background:rgba(255,51,102,0.3); color:#ff3366; }
+  .preview-chip.chip-group-yellow { border-color:#fbbf24; color:#fbbf24; background:rgba(251,191,36,0.1); }
+  .preview-chip.chip-group-yellow.active { background:rgba(251,191,36,0.3); }
+  .preview-chip.chip-group-blue   { border-color:#38bdf8; color:#38bdf8; background:rgba(56,189,248,0.1); }
+  .preview-chip.chip-group-blue.active { background:rgba(56,189,248,0.3); }
+  .preview-chip.chip-group-purple   { border-color:#6b7280; color:#9ca3af; background:rgba(107,114,128,0.1); }
+  .preview-chip.chip-group-purple.active { background:rgba(107,114,128,0.3); color:#d1d5db; }
+  .preview-chip.chip-wrong.active { background:rgba(239,68,68,0.3); }
+
+  /* 画面下中央に「復習」「トップに戻る」を横並びで置く。
+     復習ボタンを上に重ねていた時はプレビュー表示に被っていた */
+  #result-btm-btns {
+    position:absolute; left:50%; bottom:12px; transform:translateX(-50%); z-index:11;
+    display:flex; gap:12px; align-items:center; justify-content:center;
+    flex-wrap:wrap; width:max-content; max-width:96vw;
+  }
+  #result-back-btn {
+    margin:0;
+    padding:12px 40px; background:linear-gradient(135deg,#1d4ed8,#3b82f6);
+    border:none; border-radius:12px; color:white; font-size:15px; font-weight:700;
+    cursor:pointer; letter-spacing:2px; transition:all 0.2s;
+    box-shadow:0 0 16px rgba(59,130,246,0.4);
+  }
+  #result-back-btn:hover { transform:scale(1.04); }
+  /* 間違えた問題だけ復習（間違いがあった時だけリザルトに表示） */
+  #retry-wrong-btn {
+    pointer-events:auto; margin:0;
+    padding:12px 26px; background:linear-gradient(135deg,#b45309,#f59e0b);
+    border:none; border-radius:12px; color:white; font-size:14px; font-weight:700;
+    cursor:pointer; letter-spacing:1px; transition:all 0.2s;
+    box-shadow:0 0 14px rgba(245,158,11,0.4);
+  }
+  #retry-wrong-btn:hover { transform:scale(1.04); }
+  @media (max-width:700px){
+    #result-back-btn{padding:11px 22px;font-size:13px;letter-spacing:1px}
+    #retry-wrong-btn{padding:11px 16px;font-size:12.5px}
+  }
+  /* リザルトのランキング欄（スコアブロック内） */
+  #rank-ui{display:flex;gap:6px;justify-content:center;margin-top:10px;pointer-events:auto;}
+  #rank-ui input{
+    width:110px;padding:6px 8px;font-size:13px;background:rgba(17,24,39,0.85);
+    border:1px solid rgba(96,165,250,0.3);border-radius:8px;color:#e0e8ff;font-family:inherit;
+  }
+  #rank-ui button{
+    padding:6px 12px;font-size:12px;font-weight:700;border:none;border-radius:8px;
+    color:#fff;cursor:pointer;background:linear-gradient(135deg,#b45309,#f59e0b);font-family:inherit;
+  }
+  #rank-ui #rank-show-btn{background:rgba(30,58,95,0.8);border:1px solid rgba(96,165,250,0.3);color:#93c5fd;}
+  #rank-ui button:disabled{opacity:0.5;cursor:not-allowed;}
+  #rank-msg{font-size:11px;color:#4ade80;margin-top:4px;min-height:14px;pointer-events:auto;}
+  #rank-panel{
+    pointer-events:auto;margin-top:6px;max-height:150px;overflow-y:auto;display:none;
+    background:rgba(17,24,39,0.9);border:1px solid rgba(96,165,250,0.2);border-radius:8px;
+    padding:6px 10px;font-size:12px;text-align:left;
+  }
+  #rank-panel.show{display:block;}
+  #rank-panel .rank-row, #title-rank-list .rank-row{display:flex;justify-content:space-between;gap:10px;padding:3px 0;border-bottom:1px solid rgba(96,165,250,0.1);}
+  /* タイトル画面から開くランキング */
+  #title-rank{position:fixed;inset:0;z-index:120;background:rgba(10,14,26,0.9);display:none;align-items:center;justify-content:center;padding:20px;}
+  #title-rank.show{display:flex;}
+  #title-rank-card{background:#111a2e;border:1px solid #2b3f63;border-radius:14px;padding:20px 22px;width:100%;max-width:420px;max-height:80vh;display:flex;flex-direction:column;}
+  #title-rank-card h3{color:#fbbf24;font-size:17px;letter-spacing:2px;margin-bottom:4px;text-align:center;}
+  #title-rank-card .note{color:#64748b;font-size:11px;text-align:center;margin-bottom:10px;}
+  #title-rank-list{overflow-y:auto;font-size:13px;}
+  #rank-panel .rank-row .nm, #title-rank-list .rank-row .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#cbd5e1;}
+  #rank-panel .rank-row .sc, #title-rank-list .rank-row .sc{color:#fbbf24;font-weight:700;flex-shrink:0;}
+  #title-note { font-size:12px; font-weight:600; color:#93c5fd; letter-spacing:0.5px; margin-left:10px; background:rgba(30,58,95,0.6); border:1px solid rgba(96,165,250,0.3); border-radius:6px; padding:2px 8px; }
+  @media (max-width:600px) { #title-note { display:none; } }
+  /* カスタムキーボード */
+  #custom-keyboard {
+    display:flex;
+    flex-direction:column;
+    gap:5px;
+    flex:1;
+    min-height:0;
+  }
+  .kb-row {
+    display:flex;
+    gap:5px;
+    flex:1;
+    min-height:0;
+  }
+  .kb-key {
+    flex:1;
+    min-width:0;
+    padding:0;
+    background:rgba(25,35,55,0.9);
+    border:1px solid rgba(96,165,250,0.2);
+    border-radius:7px;
+    color:#e2e8f0;
+    font-size:16px;
+    font-weight:600;
+    cursor:pointer;
+    transition:background 0.1s;
+    font-family:inherit;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .kb-key:hover { background:rgba(59,130,246,0.35); border-color:#60a5fa; color:#fff; }
+  .kb-key:active { transform:scale(0.95); background:rgba(59,130,246,0.5); }
+  .kb-del {
+    background:rgba(69,10,10,0.6);
+    border-color:rgba(239,68,68,0.3);
+    color:#fca5a5;
+  }
+  .kb-del:hover { background:rgba(239,68,68,0.4); border-color:#ef4444; color:#fff; }
+
+  #hint {
+    position:absolute; top:10px; right:14px;
+    color:rgba(200,220,255,0.85); font-size:12px; text-align:center; line-height:1.8;
+    pointer-events:none; z-index:5;
+    background:rgba(10,20,40,0.65);
+    border:1px solid rgba(96,165,250,0.3);
+    border-radius:8px; padding:6px 12px;
+    backdrop-filter:blur(4px);
+  }
+
+  /* ===== スマホ対応 ===== */
+  @media (max-width: 600px) {
+    #title { font-size:14px; letter-spacing:1px; }
+    .score-val { font-size:16px; }
+    .score-box { padding:3px 10px; }
+
+    /* クイズ画面：スマホは五十音ボタンを使わずネイティブキーボードで入力 */
+    #main-middle { flex-direction:column; }
+    #canvas-container { order:1; min-height:0; }
+    #keyboard-panel.active {
+      order:2; width:100%; height:auto; flex:none;
+      border-right:none; border-top:1px solid rgba(96,165,250,0.25);
+      padding:8px;
+    }
+    #custom-keyboard { display:none!important; }
+    #answer-input { -webkit-user-select:text; user-select:text; cursor:text; }
+    #hint { display:none; }
+
+    #answer-top { flex-wrap:wrap; padding:6px 10px; gap:4px; }
+    #question-text { font-size:12px; white-space:normal; flex:none; width:100%; text-align:center; }
+    #input-area { flex-direction:row; width:100%; gap:6px; }
+    #answer-input { flex:1; width:auto; min-width:0; font-size:16px; letter-spacing:2px; padding:9px 12px; }
+    #submit-btn { width:auto; padding:10px 18px; font-size:14px; }
+    #answer-hint { font-size:11px; width:100%; flex:none; text-align:center; white-space:normal; min-height:0; }
+    #mix-answer-area { width:100%; margin-top:2px!important; }
+    .mix-btn { flex:1; padding:9px 8px; font-size:13px; }
+
+    .pq-dot { width:8px; height:8px; }
+
+    #feedback { font-size:36px; }
+    #correct-answer-banner { font-size:12px; white-space:normal; text-align:center; width:85%; }
+
+    /* リザルト画面スマホ対応 */
+    #result-top { flex-direction:column; gap:10px; padding:12px 14px; align-items:center; }
+    #result-score-big { font-size:38px; }
+    #result-comment { font-size:12px; }
+    #preview-part-name { font-size:15px; }
+    #preview-nav { gap:8px; }
+    .prev-nav-btn { padding:5px 12px; font-size:12px; }
+    #preview-counter { font-size:11px; }
+    .preview-chip { font-size:11px; padding:5px 10px; }
+    #preview-chips { max-height:32%; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+    #result-back-btn { padding:10px 28px; font-size:14px; margin:8px auto; }
+
+    /* オーバーレイスマホ対応 */
+    #overlay h2 { font-size:20px; letter-spacing:2px; }
+    #overlay p { font-size:12px; padding:0 20px; }
+    .overlay-btn { padding:12px 28px; font-size:14px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <button onclick="goTop()" style="padding:5px 12px;background:rgba(30,58,95,0.6);border:1px solid rgba(96,165,250,0.3);border-radius:6px;color:#93c5fd;font-size:12px;font-weight:600;cursor:pointer;">🏠 トップ</button>
+    <div id="title">🚗 フレーム当てクイズ <span id="title-note">※全て新規格・正式名称でお答えください</span></div>
+  </div>
+  <div id="score-area">
+    <div class="score-box"><div class="score-label">正解</div><div class="score-val" id="correct-count">0</div></div>
+    <div class="score-box"><div class="score-label">問題</div><div class="score-val" id="question-num">0/0</div></div>
+  </div>
+</div>
+
+<div id="answer-top">
+  <div id="question-text">問題を読み込み中…</div>
+  <div id="input-area">
+    <input id="answer-input" type="text" readonly tabindex="-1" inputmode="none" virtualkeyboardpolicy="manual" placeholder="" autocomplete="off" spellcheck="false" data-form-type="other">
+    <button id="submit-btn" onclick="submitAnswer()">決定</button>
+  </div>
+  <!-- ミックスモード：修復歴ボタン -->
+  <div id="mix-answer-area" style="display:none; gap:10px; justify-content:center; margin-top:10px; align-items:center;">
+    <span style="font-size:13px;color:#94a3b8;">修復歴に</span>
+    <button id="mix-yes-btn" class="mix-btn" onclick="answerHistory(true)">含まれる</button>
+    <button id="mix-no-btn" class="mix-btn" onclick="answerHistory(false)">含まれない</button>
+  </div>
+  <div id="answer-hint">骨格名を入力して「含まれる／含まれない」を押してください</div>
+</div>
+<div id="main-middle">
+  <div id="keyboard-panel">
+    <div id="progress-quiz"></div>
+    <div id="custom-keyboard">
+      <div class="kb-row">
+        <button class="kb-key" onclick="kbInput('ア')">ア</button>
+        <button class="kb-key" onclick="kbInput('イ')">イ</button>
+        <button class="kb-key" onclick="kbInput('ウ')">ウ</button>
+        <button class="kb-key" onclick="kbInput('エ')">エ</button>
+        <button class="kb-key" onclick="kbInput('オ')">オ</button>
+      </div>
+      <div class="kb-row">
+        <button class="kb-key" onclick="kbInput('カ')">カ</button>
+        <button class="kb-key" onclick="kbInput('キ')">キ</button>
+        <button class="kb-key" onclick="kbInput('ク')">ク</button>
+        <button class="kb-key" onclick="kbInput('ケ')">ケ</button>
+        <button class="kb-key" onclick="kbInput('コ')">コ</button>
+      </div>
+      <div class="kb-row">
+        <button class="kb-key" onclick="kbInput('サ')">サ</button>
+        <button class="kb-key" onclick="kbInput('シ')">シ</button>
+        <button class="kb-key" onclick="kbInput('ス')">ス</button>
+        <button class="kb-key" onclick="kbInput('セ')">セ</button>
+        <button class="kb-key" onclick="kbInput('ソ')">ソ</button>
+      </div>
+      <div class="kb-row">
+        <button class="kb-key" onclick="kbInput('タ')">タ</button>
+        <button class="kb-key" onclick="kbInput('チ')">チ</button>
+        <button class="kb-key" onclick="kbInput('ツ')">ツ</button>
+        <button class="kb-key" onclick="kbInput('テ')">テ</button>
+        <button class="kb-key" onclick="kbInput('ト')">ト</button>
+      </div>
+      <div class="kb-row">
+        <button class="kb-key" onclick="kbInput('ナ')">ナ</button>
+        <button class="kb-key" onclick="kbInput('ニ')">ニ</button>
+        <button class="kb-key" onclick="kbInput('ヌ')">ヌ</button>
+        <button class="kb-key" onclick="kbInput('ネ')">ネ</button>
+        <button class="kb-key" onclick="kbInput('ノ')">ノ</button>
+      </div>
+      <div class="kb-row">
+        <button class="kb-key" onclick="kbInput('ハ')">ハ</button>
+        <button class="kb-key" onclick="kbInput('ヒ')">ヒ</button>
+        <button class="kb-key" onclick="kbInput('フ')">フ</button>
+        <button class="kb-key" onclick="kbInput('ヘ')">ヘ</button>
+        <button class="kb-key" onclick="kbInput('ホ')">ホ</button>
+      </div>
+      <div class="kb-row">
+        <button class="kb-key" onclick="kbInput('マ')">マ</button>
+        <button class="kb-key" onclick="kbInput('ミ')">ミ</button>
+        <button class="kb-key" onclick="kbInput('ム')">ム</button>
+        <button class="kb-key" onclick="kbInput('メ')">メ</button>
+        <button class="kb-key" onclick="kbInput('モ')">モ</button>
+      </div>
+      <div class="kb-row">
+        <button class="kb-key" onclick="kbInput('ヤ')">ヤ</button>
+        <button class="kb-key" onclick="kbInput('ユ')">ユ</button>
+        <button class="kb-key" onclick="kbInput('ヨ')">ヨ</button>
+        <button class="kb-key" onclick="kbInput('ワ')">ワ</button>
+        <button class="kb-key" onclick="kbInput('ン')">ン</button>
+      </div>
+      <div class="kb-row">
+        <button class="kb-key" onclick="kbInput('ラ')">ラ</button>
+        <button class="kb-key" onclick="kbInput('リ')">リ</button>
+        <button class="kb-key" onclick="kbInput('ル')">ル</button>
+        <button class="kb-key" onclick="kbInput('レ')">レ</button>
+        <button class="kb-key" onclick="kbInput('ロ')">ロ</button>
+      </div>
+      <div class="kb-row">
+        <button class="kb-key" onclick="kbInput('ヲ')">ヲ</button>
+        <button class="kb-key" onclick="kbInput('ー')">ー</button>
+        <button class="kb-key" onclick="kbSmall()">小</button>
+        <button class="kb-key" onclick="kbDakuten()">゛</button>
+        <button class="kb-key" onclick="kbHandakuten()">゜</button>
+      </div>
+      <div class="kb-row" style="flex:0.7;">
+        <button class="kb-key kb-del" onclick="kbDelete()">⌫ 削除</button>
+        <button class="kb-key" onclick="submitAnswer()">✓ 決定</button>
+      </div>
+    </div>
+  </div>
+  <div id="canvas-container">
+  <canvas id="canvas"></canvas>
+  <div id="hint">ドラッグ: 回転　ホイール: ズーム<br>右クリック: 移動</div>
+  <div id="feedback"></div>
+  <div id="correct-answer-banner"></div>
+
+  <div id="loading">
+    <div id="loading-title">🚗 フレーム当てクイズ</div>
+    <div id="progress-bar"><div id="progress-fill"></div></div>
+    <div id="loading-msg">3Dモデル読み込み中…</div>
+  </div>
+
+  <div id="overlay">
+    <h2>フレーム当てクイズ</h2>
+    <p style="margin-bottom:4px;">モードを選んでスタート！</p>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;">
+      <div style="text-align:center;">
+        <button class="overlay-btn" onclick="startNormal()">🏆 通常モード</button>
+        <div style="font-size:11px;color:#64748b;margin-top:4px;">修復歴の骨格14種・全問出題</div>
+      </div>
+      <div style="text-align:center;">
+        <button class="overlay-btn" style="background:linear-gradient(135deg,#0f766e,#14b8a6);" onclick="startMix()">🎲 ミックスモード</button>
+        <div style="font-size:11px;color:#64748b;margin-top:4px;">全18種からランダム10問<br>修復歴判定あり</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:4px;">
+      <button class="sub-btn" onclick="openPreviewFromTop()">🔍 フレームを見る</button>
+      <button class="sub-btn" onclick="showTitleRankingFrame()">🏆 ランキングを見る</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- タイトルから開くランキング -->
+<div id="title-rank" onclick="if(event.target===this)closeTitleRanking()">
+  <div id="title-rank-card">
+    <h3>🏆 ランキング</h3>
+    <div class="note">デモ用のダミーランキングです（記録はこの端末のブラウザにだけ保存されます）</div>
+    <div id="title-rank-list"></div>
+    <button class="overlay-btn" style="margin-top:12px" onclick="closeTitleRanking()">閉じる</button>
+  </div>
+</div>
+
+<!-- リザルト画面：canvas-containerの外、body直下 -->
+<div id="result-screen">
+  <div id="result-top">
+    <div id="result-score-block">
+      <div id="result-score-big"></div>
+      <div id="result-comment"></div>
+      <div id="rank-ui">
+        <input id="rank-name" maxlength="20" placeholder="ニックネーム" style="width:120px;padding:4px 8px;border-radius:6px;border:1px solid #4a6fa5;background:rgba(10,18,40,0.95);color:#e0e8ff">
+        <button id="rank-save-btn" onclick="saveRankFrame()">🏆 登録</button>
+        <button id="rank-show-btn" onclick="toggleRankPanel()">🏆 ランキングを見る</button>
+      </div>
+      <div id="rank-msg" style="font-size:11.5px;color:#64748b">🏆 デモ用ランキング：記録はこの端末のブラウザにだけ保存されます</div>
+      <div id="rank-panel"></div>
+    </div>
+    <div id="preview-part-info">
+      <div id="preview-part-name"></div>
+      <div id="preview-part-badge"></div>
+      <div id="preview-wrong-answer"></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;align-items:center">
+      <div id="preview-nav">
+        <button class="prev-nav-btn" onclick="previewPrev()">◀</button>
+        <div id="preview-counter"></div>
+        <button class="prev-nav-btn" onclick="previewNext()">▶</button>
+      </div>
+    </div>
+  </div>
+  <!-- canvasをリザルト画面内に確保するエリア -->
+  <div id="result-canvas-area"></div>
+  <div id="preview-chips"></div>
+  <div id="result-btm-btns">
+    <button id="retry-wrong-btn" onclick="startRetryWrong()" style="display:none;">🔁 間違えた問題だけ復習</button>
+    <button id="result-back-btn" onclick="backToTop()">🏠 トップに戻る</button>
+  </div>
+  </div>
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// 3Dモデルの頂点データ（base64のFloat32配列）は model.json に分離している
+
+const PREVIEW_ORDER = [
+  { material:'quiz_roasapo',            label:'ロアサポート',             group:'pink' },
+  { material:'quiz_front_inside_panel', label:'フロントインサイドパネル', group:'pink' },
+  { material:'quiz_front_side',         label:'フロントサイドメンバー',   group:'pink' },
+  { material:'dash_panel',              label:'ダッシュパネル',           group:'pink' },
+  { material:'quiz_front_pira',         label:'フロントピラー',           group:'pink' },
+  { material:'center_pira',             label:'センターピラー',           group:'yellow' },
+  { material:'quiz_roof',               label:'ルーフ',                   group:'yellow' },
+  { material:'center_floor_panel',      label:'センターフロアパネル',     group:'yellow' },
+  { material:'floor_side',              label:'フロアサイドメンバー',     group:'yellow' },
+  { material:'riya_cross',              label:'リヤクロスメンバー',       group:'blue' },
+  { material:'riya_side',               label:'リヤサイドメンバー',       group:'blue' },
+  { material:'riya_inner-',             label:'リヤインナー',             group:'blue' },
+  { material:'supea_house',             label:'スペアハウス',             group:'blue' },
+  { material:'trunk_floor',             label:'トランクフロア',           group:'blue' },
+  { material:'taiya_house',             label:'タイヤハウス',             group:'purple' },
+  { material:'step',                    label:'ステップ',                 group:'purple', alias:'ロッカーパネル' },
+  { material:'coasapo',                 label:'コアサポート',             group:'purple' },
+  { material:'backpanel',               label:'バックパネル',             group:'purple' },
+];
+
+const QUIZ_DEFS = [
+  { material:'quiz_front_inside_panel', label:'フロントインサイドパネル' },
+  { material:'quiz_roasapo',            label:'ロアサポート' },
+  { material:'dash_panel',              label:'ダッシュパネル' },
+  { material:'quiz_front_pira',         label:'フロントピラー' },
+  { material:'quiz_front_side',         label:'フロントサイドメンバー' },
+  { material:'center_floor_panel',      label:'センターフロアパネル' },
+  { material:'center_pira',             label:'センターピラー' },
+  { material:'floor_side',              label:'フロアサイドメンバー' },
+  { material:'riya_cross',              label:'リヤクロスメンバー', alias:'リアクロスメンバー' },
+  { material:'riya_inner-',             label:'リヤインナー', alias:'リアインナー' },
+  { material:'supea_house',             label:'スペアハウス' },
+  { material:'trunk_floor',             label:'トランクフロア' },
+  { material:'riya_side',               label:'リヤサイドメンバー', alias:'リアサイドメンバー' },
+  { material:'quiz_roof',                label:'ルーフ' },
+];
+
+// 修復歴に含まれない骨格（4種）
+const EXTRA_DEFS = [
+  { material:'taiya_house', label:'タイヤハウス' },
+  { material:'step',        label:'ステップ', alias:'ロッカーパネル' },
+  { material:'coasapo',     label:'コアサポート' },
+  { material:'backpanel',   label:'バックパネル' },
+];
+
+// 全部品（18種）
+const ALL_DEFS = [...QUIZ_DEFS, ...EXTRA_DEFS];
+
+let GAME_MODE = 'normal'; // 'normal' or 'mix'
+const TOTAL_QUESTIONS_NORMAL = QUIZ_DEFS.length; // 14
+const TOTAL_QUESTIONS_MIX = 10;
+let TOTAL_QUESTIONS = TOTAL_QUESTIONS_NORMAL;
+
+const canvas = document.getElementById('canvas');
+const container = document.getElementById('canvas-container');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setClearColor(0x1a2035,1);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.4;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a2035);
+scene.fog = new THREE.FogExp2(0x1a2035,0.03);
+
+const camera = new THREE.PerspectiveCamera(45,1,0.01,100);
+camera.position.set(2.5,1.5,3.5);
+const controls = new OrbitControls(camera,canvas);
+controls.target.set(0,0.6,0.9);
+controls.enableDamping=true; controls.dampingFactor=0.08;
+controls.minDistance=0.5; controls.maxDistance=20;
+controls.update(); camera.lookAt(0,0.6,0.9);
+
+scene.add(new THREE.AmbientLight(0xc8d8f0,2.5));
+const d1=new THREE.DirectionalLight(0xffffff,2.5); d1.position.set(4,6,5); scene.add(d1);
+const d2=new THREE.DirectionalLight(0x8ab4f8,1.2); d2.position.set(-4,3,-3); scene.add(d2);
+const d3=new THREE.DirectionalLight(0x6090c0,0.6); d3.position.set(0,-3,2); scene.add(d3);
+scene.add(new THREE.GridHelper(14,28,0x1e3a5f,0x16263d));
+
+const transparentMat = new THREE.MeshPhysicalMaterial({
+  color:0xa8c8e8, metalness:0.15, roughness:0.6,
+  transparent:true, opacity:0.22, side:THREE.DoubleSide, depthWrite:false,
+});
+const makeHighlightMat = () => new THREE.MeshStandardMaterial({
+  color:0xff3366, emissive:0xff1144, emissiveIntensity:0.6,
+  metalness:0.05, roughness:0.45, side:THREE.DoubleSide,
+});
+// 正解（青）・エイリアス正解（黄）用マテリアル
+const makeCorrectMat = () => new THREE.MeshStandardMaterial({
+  color:0x38bdf8, emissive:0x0ea5e9, emissiveIntensity:0.6,
+  metalness:0.05, roughness:0.45, side:THREE.DoubleSide,
+});
+const makeAliasMat = () => new THREE.MeshStandardMaterial({
+  color:0xfbbf24, emissive:0xf59e0b, emissiveIntensity:0.5,
+  metalness:0.05, roughness:0.45, side:THREE.DoubleSide,
+});
+
+// プレビュー用グループマテリアル
+const groupMats = {
+  pink:   new THREE.MeshStandardMaterial({ color:0xff3366, emissive:0xff1144, emissiveIntensity:0.6, metalness:0.05, roughness:0.45, side:THREE.DoubleSide }),
+  yellow: new THREE.MeshStandardMaterial({ color:0xfbbf24, emissive:0xf59e0b, emissiveIntensity:0.5, metalness:0.05, roughness:0.45, side:THREE.DoubleSide }),
+  blue:   new THREE.MeshStandardMaterial({ color:0x38bdf8, emissive:0x0ea5e9, emissiveIntensity:0.6, metalness:0.05, roughness:0.45, side:THREE.DoubleSide }),
+  purple: new THREE.MeshStandardMaterial({ color:0xc084fc, emissive:0xa855f7, emissiveIntensity:0.5, metalness:0.05, roughness:0.45, side:THREE.DoubleSide }),
+};
+
+const quizMaterials = {};
+ALL_DEFS.forEach(def => {
+  quizMaterials[def.material] = {
+    highlight: makeHighlightMat(),
+    correct:   makeCorrectMat(),
+    alias:     makeAliasMat(),
+  };
+});
+const meshByMaterial = {};
+ALL_DEFS.forEach(def => { meshByMaterial[def.material] = []; });
+
+function b64toF32(b64) {
+  const bin=atob(b64), buf=new ArrayBuffer(bin.length), u8=new Uint8Array(buf);
+  for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
+  return new Float32Array(buf);
+}
+function makeGeo(posArr,nrmArr) {
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(posArr,3));
+  nrmArr&&nrmArr.length===posArr.length
+    ? geo.setAttribute('normal',new THREE.BufferAttribute(nrmArr,3))
+    : geo.computeVertexNormals();
+  return geo;
+}
+function setProgress(pct,msg){
+  document.getElementById('progress-fill').style.width=pct+'%';
+  if(msg) document.getElementById('loading-msg').textContent=msg;
+}
+
+async function loadModels(){
+  setProgress(5,'モデルデータ読み込み中…');
+  const res=await fetch('model.json');
+  if(!res.ok) throw new Error('model.json を読み込めませんでした');
+  const data=await res.json();
+  setProgress(40,'ベースメッシュ構築中…'); await new Promise(r=>setTimeout(r,10));
+  scene.add(new THREE.Mesh(makeGeo(b64toF32(data.base.pos),data.base.nrm?b64toF32(data.base.nrm):null),transparentMat));
+  setProgress(70,'クイズメッシュ構築中…'); await new Promise(r=>setTimeout(r,10));
+  for(let i=0;i<ALL_DEFS.length;i++){
+    const def=ALL_DEFS[i], d=data.quiz[def.material];
+    if(!d) continue;
+    const mesh=new THREE.Mesh(makeGeo(b64toF32(d.pos),d.nrm?b64toF32(d.nrm):null),transparentMat);
+    scene.add(mesh);
+    meshByMaterial[def.material].push(mesh);
+    setProgress(70+((i+1)/ALL_DEFS.length)*25,def.label+' 構築中…');
+    await new Promise(r=>setTimeout(r,5));
+  }
+  setProgress(100,'完了！'); await new Promise(r=>setTimeout(r,300));
+  document.getElementById('loading').style.display='none';
+}
+
+// ===== クイズロジック =====
+// スマホレイアウト判定（CSSの@media 600pxと同じ基準）
+const isMobileLayout = () => window.matchMedia('(max-width:600px)').matches;
+
+let questions=[], currentQIndex=0, correctCount=0;
+let quizActive=false, quizSession=false, currentHighlightMtl=null, answers=[];
+let isRetrySession=false; // 「間違えた問題だけ復習」中はランキング登録を出さない
+// answers[i] = { result:'correct'|'wrong', typed:string, correct:string }
+
+const shuffle = arr => {
+  const a=[...arr];
+  for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+  return a;
+};
+
+window.startNormal = function(){
+  GAME_MODE='normal';
+  TOTAL_QUESTIONS=TOTAL_QUESTIONS_NORMAL;
+  document.getElementById('overlay').classList.add('hidden');
+  document.getElementById('answer-top').classList.add('active'); document.getElementById('keyboard-panel').classList.add('active');
+  document.getElementById('mix-answer-area').style.display='none';
+  const kb1 = document.getElementById('custom-keyboard');
+  if(kb1) kb1.style.display='flex';
+  questions=shuffle([...QUIZ_DEFS]);
+  answers=new Array(TOTAL_QUESTIONS).fill(null);
+  currentQIndex=0; correctCount=0; quizActive=true; quizSession=true; isRetrySession=false;
+  updateScoreUI(); showQuestion(0);
+};
+
+window.startMix = function(){
+  GAME_MODE='mix';
+  TOTAL_QUESTIONS=TOTAL_QUESTIONS_MIX;
+  document.getElementById('overlay').classList.add('hidden');
+  document.getElementById('answer-top').classList.add('active'); document.getElementById('keyboard-panel').classList.add('active');
+  const kb2 = document.getElementById('custom-keyboard');
+  if(kb2) kb2.style.display='flex';
+  // 全18種からランダム10問
+  questions=shuffle([...ALL_DEFS]).slice(0, TOTAL_QUESTIONS_MIX);
+  answers=new Array(TOTAL_QUESTIONS).fill(null);
+  currentQIndex=0; correctCount=0; quizActive=true; quizSession=true; isRetrySession=false;
+  updateScoreUI(); showQuestion(0);
+};
+
+// 間違えた問題だけをもう一度出題する（リザルト画面から）
+window.startRetryWrong = function(){
+  const wrongDefs = answers
+    .filter(a => a && a.result === 'wrong')
+    .map(a => ALL_DEFS.find(d => d.material === a.material))
+    .filter(Boolean);
+  if (!wrongDefs.length) return;
+  // リザルト画面を閉じてクイズ画面へ戻す（canvasを元のコンテナに戻す）
+  const cc = document.getElementById('canvas-container');
+  cc.insertBefore(canvas, cc.firstChild);
+  cc.insertBefore(document.getElementById('hint'), canvas.nextSibling);
+  document.getElementById('result-screen').classList.remove('show');
+  document.getElementById('answer-top').classList.add('active');
+  document.getElementById('keyboard-panel').classList.add('active');
+  if (GAME_MODE !== 'mix') document.getElementById('mix-answer-area').style.display = 'none';
+  resize();
+  TOTAL_QUESTIONS = wrongDefs.length;
+  questions = shuffle(wrongDefs);
+  answers = new Array(TOTAL_QUESTIONS).fill(null);
+  currentQIndex = 0; correctCount = 0; quizActive = true; quizSession = true;
+  isRetrySession = true;   // 復習は部分出題なのでランキング対象外
+  updateScoreUI(); showQuestion(0);
+};
+
+function setAllTransparent(){
+  ALL_DEFS.forEach(def => meshByMaterial[def.material].forEach(m => m.material=transparentMat));
+}
+
+function showQuestion(idx){
+  const q=questions[idx];
+  currentHighlightMtl=q.material;
+  setAllTransparent();
+  meshByMaterial[q.material].forEach(m => m.material=quizMaterials[q.material].highlight);
+
+  document.getElementById('question-text').innerHTML=
+    `<span style="color:#64748b">Q${idx+1}/${TOTAL_QUESTIONS}.</span>　光っている骨格の名前をカタカナ（ひらがな可）で入力してください`;
+
+  const inp = document.getElementById('answer-input');
+  inp.value=''; inp.className=''; inp.disabled=false;
+  if(isMobileLayout()){
+    // スマホ：ネイティブキーボード（IME）で入力
+    inp.readOnly = false;
+    inp.removeAttribute('inputmode');
+    inp.removeAttribute('virtualkeyboardpolicy');
+    inp.setAttribute('tabindex','0');
+    inp.placeholder = 'タップして入力';
+  } else {
+    // PC：readonlyを維持してIME起動を根本防止（五十音ボタンで入力）
+    inp.readOnly = true;
+    inp.setAttribute('inputmode','none');
+    inp.placeholder = '';
+    inp.blur();
+  }
+  document.getElementById('submit-btn').disabled=false;
+  document.getElementById('answer-hint').textContent = isMobileLayout()
+    ? '入力欄をタップ → スマホのキーボードで入力'
+    : 'キーボードで入力 → 決定ボタン';
+  document.getElementById('answer-hint').className='';
+  // ミックスモード：修復歴ボタン表示
+  // カスタムキーボード表示
+  const kb = document.getElementById('custom-keyboard');
+  if(kb) kb.style.display='flex';
+
+  if(GAME_MODE==='mix'){
+    mixHistorySelected = null;
+    document.getElementById('mix-answer-area').style.display='flex';
+    document.getElementById('mix-yes-btn').className='mix-btn';
+    document.getElementById('mix-yes-btn').disabled=false;
+    document.getElementById('mix-no-btn').className='mix-btn';
+    document.getElementById('mix-no-btn').disabled=false;
+    const sbtn=document.getElementById('submit-btn');
+    if(sbtn){ sbtn.style.display='none'; sbtn.disabled=true; }
+  } else {
+    document.getElementById('mix-answer-area').style.display='none';
+    const sbtn=document.getElementById('submit-btn');
+    if(sbtn){ sbtn.style.display=''; sbtn.disabled=false; }
+  }
+  updateProgressDots(idx); updateScoreUI();
+  // レイアウト確定後にキャンバスの縦横比を追従（ResizeObserverが使えない環境の保険。
+  // rAFはバックグラウンドタブで止まるためsetTimeoutを使う）
+  setTimeout(resize, 0);
+}
+
+// カスタムキーボード入力
+window.kbInput = function(char){
+  const inp = document.getElementById('answer-input');
+  if(!inp || inp.disabled) return;
+  inp.value += char;
+};
+window.kbDelete = function(){
+  const inp = document.getElementById('answer-input');
+  if(!inp || inp.disabled) return;
+  inp.value = inp.value.slice(0, -1);
+};
+
+// 濁点変換（トグル対応・パ行→バ行クロス変換対応）
+window.kbDakuten = function(){
+  const inp = document.getElementById('answer-input');
+  if(!inp || inp.disabled || !inp.value) return;
+  const fwd = {'カ':'ガ','キ':'ギ','ク':'グ','ケ':'ゲ','コ':'ゴ','サ':'ザ','シ':'ジ','ス':'ズ','セ':'ゼ','ソ':'ゾ','タ':'ダ','チ':'ヂ','ツ':'ヅ','テ':'デ','ト':'ド','ハ':'バ','ヒ':'ビ','フ':'ブ','ヘ':'ベ','ホ':'ボ','ウ':'ヴ'};
+  const rev = Object.fromEntries(Object.entries(fwd).map(([k,v])=>[v,k]));
+  const half2voiced = {'パ':'バ','ピ':'ビ','プ':'ブ','ペ':'ベ','ポ':'ボ'};
+  const last = inp.value.slice(-1);
+  if(fwd[last]) inp.value = inp.value.slice(0,-1) + fwd[last];
+  else if(rev[last]) inp.value = inp.value.slice(0,-1) + rev[last];
+  else if(half2voiced[last]) inp.value = inp.value.slice(0,-1) + half2voiced[last];
+};
+
+// 半濁点変換（トグル対応・バ行→パ行クロス変換対応）
+window.kbHandakuten = function(){
+  const inp = document.getElementById('answer-input');
+  if(!inp || inp.disabled || !inp.value) return;
+  const fwd = {'ハ':'パ','ヒ':'ピ','フ':'プ','ヘ':'ペ','ホ':'ポ'};
+  const rev = Object.fromEntries(Object.entries(fwd).map(([k,v])=>[v,k]));
+  const voiced2half = {'バ':'パ','ビ':'ピ','ブ':'プ','ベ':'ペ','ボ':'ポ'};
+  const last = inp.value.slice(-1);
+  if(fwd[last]) inp.value = inp.value.slice(0,-1) + fwd[last];
+  else if(rev[last]) inp.value = inp.value.slice(0,-1) + rev[last];
+  else if(voiced2half[last]) inp.value = inp.value.slice(0,-1) + voiced2half[last];
+};
+
+// 小文字変換（トグル対応）
+window.kbSmall = function(){
+  const inp = document.getElementById('answer-input');
+  if(!inp || inp.disabled || !inp.value) return;
+  const fwd = {'ア':'ァ','イ':'ィ','ウ':'ゥ','エ':'ェ','オ':'ォ','ツ':'ッ','ヤ':'ャ','ユ':'ュ','ヨ':'ョ','ワ':'ヮ'};
+  const rev = Object.fromEntries(Object.entries(fwd).map(([k,v])=>[v,k]));
+  const last = inp.value.slice(-1);
+  if(fwd[last]) inp.value = inp.value.slice(0,-1) + fwd[last];
+  else if(rev[last]) inp.value = inp.value.slice(0,-1) + rev[last];
+};
+
+// カタカナ→ひらがな変換
+function toHiragana(str){
+  return str.replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+}
+
+// ミックスモード：修復歴ボタン押下
+let mixHistorySelected = null; // ミックスモードで選択中の修復歴
+
+window.answerHistory = function(isHistory){
+  if(!quizActive) return;
+  mixHistorySelected = isHistory;
+  // ボタンの選択状態だけ更新（決定はまだしない）
+  document.getElementById('mix-yes-btn').className='mix-btn'+(isHistory?' mix-btn-selected':'');
+  document.getElementById('mix-no-btn').className='mix-btn'+(!isHistory?' mix-btn-selected':'');
+  // 決定ボタンを有効化
+  const sbtn = document.getElementById('submit-btn');
+  if(sbtn){ sbtn.style.display=''; sbtn.disabled=false; }
+};
+
+window.submitAnswer = function(){
+  if(!quizActive) return;
+  const inp=document.getElementById('answer-input');
+  const hint=document.getElementById('answer-hint');
+  const typed=inp.value.trim();
+  if(!typed){ hint.textContent='⚠ 骨格名を入力してから決定してください'; return; }
+  const q=questions[currentQIndex];
+  const typedH = toHiragana(typed);
+  const labelH = toHiragana(q.label);
+  const aliasH = q.alias ? toHiragana(q.alias) : null;
+  const nameCorrect = typedH===labelH || (aliasH && typedH===aliasH);
+
+  if(GAME_MODE==='mix'){
+    if(mixHistorySelected===null){ hint.textContent='⚠ 修復歴に「含まれる／含まれない」を選択してください'; return; }
+    // 修復歴判定：QUIZ_DEFSにあれば「含まれる」、EXTRA_DEFSなら「含まれない」
+    const inHistory = QUIZ_DEFS.some(d=>d.material===q.material);
+    const historyCorrect = mixHistorySelected === inHistory;
+    const isCorrect = nameCorrect && historyCorrect;
+    // ボタンを正解/不正解表示に更新
+    document.getElementById('mix-yes-btn').className='mix-btn'+(inHistory?' mix-btn-correct':' mix-btn-wrong');
+    document.getElementById('mix-no-btn').className='mix-btn'+(!inHistory?' mix-btn-correct':' mix-btn-wrong');
+    document.getElementById('mix-yes-btn').disabled=true;
+    document.getElementById('mix-no-btn').disabled=true;
+    answers[currentQIndex]={ result:isCorrect?'correct':'wrong', typed, correct:q.label, material:q.material,
+      nameCorrect, historyCorrect, isHistory:mixHistorySelected, inHistory };
+    processResult(isCorrect, q, typed);
+    return;
+  }
+
+  // 通常モード
+  const isCorrect = nameCorrect;
+  answers[currentQIndex]={ result:isCorrect?'correct':'wrong', typed, correct:q.label, material:q.material };
+  processResult(isCorrect, q, typed);
+};
+
+function processResult(isCorrect,q,typed){
+  quizActive=false;
+  const inp = document.getElementById('answer-input');
+  if(inp){ inp.blur(); inp.disabled=true; } // blurでスマホのキーボードを閉じて3Dを見せる
+  const sbtn=document.getElementById('submit-btn'); if(sbtn) sbtn.disabled=true;
+  if(isCorrect){
+    inp.classList.add('correct'); correctCount++;
+    showFeedback('✓ 正解！',true);
+    document.getElementById('answer-hint').textContent='✓ 正解！';
+    updateScoreUI(); updateProgressDots(currentQIndex);
+    // 正解時はこれまで通り自動で次へ
+    setTimeout(nextQuestion,1800);
+  } else {
+    inp.classList.add('wrong');
+    showFeedback('✗ 不正解',false);
+    const banner=document.getElementById('correct-answer-banner');
+    const a0=answers[currentQIndex];
+    let bannerMsg = `正解は… <strong>${q.label}</strong>`;
+    if(GAME_MODE==='mix' && a0){
+      if(!a0.nameCorrect) bannerMsg += `　名前：✗`;
+      if(!a0.historyCorrect) bannerMsg += `　修復歴：${a0.inHistory?'含まれる':'含まれない'}が正解`;
+    }
+    // 不正解時はタップするまで次へ進まない（3Dを回して確認できる）
+    bannerMsg += `<button id="next-btn" onclick="nextQuestion()">タップして次へ ▶</button>`;
+    banner.innerHTML=bannerMsg;
+    banner.classList.add('show');
+    document.getElementById('answer-hint').textContent=`正解：${q.label}`;
+    document.getElementById('answer-hint').classList.add('wrong-hint');
+    updateScoreUI(); updateProgressDots(currentQIndex);
+  }
+}
+
+// 次の問題へ進む（正解時は自動、不正解時は「タップして次へ」から呼ばれる）
+window.nextQuestion = function(){
+  if(!quizSession) return; // 🏠トップ等でクイズが中断された後は何もしない
+  document.getElementById('correct-answer-banner').classList.remove('show');
+  currentQIndex++;
+  if(currentQIndex>=TOTAL_QUESTIONS) showResult();
+  else { quizActive=true; showQuestion(currentQIndex); }
+};
+
+function showFeedback(text,ok){
+  const el=document.getElementById('feedback');
+  el.textContent=text; el.className='show '+(ok?'correct':'wrong');
+  // bannerと同じタイミング（1800ms）で消す
+  setTimeout(()=>{ el.className=''; },1800);
+}
+
+// ===== ランキング =====
+// ポートフォリオ版：ランキングはブラウザの localStorage に保存（外部サーバーには送信しません）
+const MAX_RANK=20;
+const RANK_KEY='portfolio_frame_rankings';
+let rankSaved=false;
+
+// 初期表示用のダミーデータ（すべて架空の名前）
+const RANK_SEED=[
+  {name:'サンプル太郎',score:100,misses:0,raw:'14/14'},
+  {name:'デモ花子',score:93,misses:1,raw:'13/14'},
+  {name:'テストユーザーA',score:86,misses:2,raw:'12/14'},
+  {name:'ゲストB',score:79,misses:3,raw:'11/14'},
+  {name:'ゲストC',score:71,misses:4,raw:'10/14'},
+];
+function rankLoad(){
+  try{ const s=localStorage.getItem(RANK_KEY); if(s) return JSON.parse(s); }catch(e){}
+  return RANK_SEED.slice();
+}
+function rankStore(list){
+  try{ localStorage.setItem(RANK_KEY,JSON.stringify(list)); }catch(e){}
+}
+function rankFilterSort(data){
+  return [...data].sort((a,b)=>(b.score-a.score)||((a.misses??1e9)-(b.misses??1e9)));
+}
+const escRank=(s)=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function renderRankPanel(target){
+  const panel=target||document.getElementById('rank-panel');
+  try{
+    const rows=rankFilterSort(rankLoad()).slice(0,MAX_RANK);
+    if(!rows.length){
+      panel.innerHTML='<div style="color:#64748b;padding:4px;">まだ記録がありません。1番乗りを狙おう！</div>';
+      return;
+    }
+    const medals=['🥇','🥈','🥉'];
+    panel.innerHTML=rows.map((e,i)=>`
+      <div class="rank-row">
+        <span class="nm">${medals[i]||(i+1)+'.'} ${escRank(e.name)}</span>
+        <span class="sc">${Number(e.score)||0}点${e.raw?' '+escRank(e.raw):''}</span>
+      </div>`).join('');
+  }catch(e){
+    panel.innerHTML='<div style="color:#64748b;padding:4px;">読み込みに失敗しました。</div>';
+  }
+}
+
+window.showTitleRankingFrame=function(){
+  document.getElementById('title-rank').classList.add('show');
+  renderRankPanel(document.getElementById('title-rank-list'));
+};
+window.closeTitleRanking=function(){
+  document.getElementById('title-rank').classList.remove('show');
+};
+window.toggleRankPanel=function(){
+  const panel=document.getElementById('rank-panel');
+  const show=!panel.classList.contains('show');
+  panel.classList.toggle('show',show);
+  if(show) renderRankPanel();
+};
+
+window.saveRankFrame=function(){
+  if(rankSaved) return;
+  const name=(document.getElementById('rank-name').value.trim()||'名無し').slice(0,20);
+  const btn=document.getElementById('rank-save-btn');
+  btn.disabled=true;
+  const pct=Math.round(correctCount/TOTAL_QUESTIONS*100);
+  const entry={
+    name, score:pct, misses:TOTAL_QUESTIONS-correctCount,
+    date:new Date().toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}),
+    raw:`${correctCount}/${TOTAL_QUESTIONS}`, mode:GAME_MODE,
+  };
+  try{
+    const list=rankLoad();
+    list.push(entry);
+    rankStore(rankFilterSort(list).slice(0,MAX_RANK));
+    rankSaved=true;
+    document.getElementById('rank-msg').textContent='✓ 登録しました！';
+    btn.textContent='登録済み';
+    document.getElementById('rank-panel').classList.add('show');
+    renderRankPanel();
+  }catch(e){
+    document.getElementById('rank-msg').textContent='保存に失敗しました。';
+    btn.disabled=false; btn.textContent='🏆 登録';
+  }
+};
+
+// ===== リザルト =====
+let previewIdx=0;
+
+function showResult(){
+  quizSession=false;
+  currentHighlightMtl=null;
+  setAllTransparent();
+  document.getElementById('answer-top').classList.remove('active'); document.getElementById('keyboard-panel').classList.remove('active');
+
+  const pct=Math.round(correctCount/TOTAL_QUESTIONS*100);
+  const comment=pct===100?'🏆 完璧！全問正解！':pct>=80?'🎉 素晴らしい！':pct>=60?'👍 もう少し！':'📚 もう一度チャレンジ！';
+  document.getElementById('result-score-big').textContent=`${correctCount} / ${TOTAL_QUESTIONS}`;
+  document.getElementById('result-comment').textContent=`${pct}点　${comment}`;
+
+  // 間違いがあれば「間違えた問題だけ復習」ボタンを出す
+  const hasWrong = answers.some(a => a && a.result === 'wrong');
+  document.getElementById('retry-wrong-btn').style.display = hasWrong ? '' : 'none';
+
+  // ランキング欄の初期化（部分出題の復習モードでは表示しない）
+  rankSaved=false;
+  document.getElementById('rank-ui').style.display = isRetrySession ? 'none' : 'flex';
+  document.getElementById('rank-msg').textContent='';
+  document.getElementById('rank-panel').classList.remove('show');
+  const rankBtn=document.getElementById('rank-save-btn');
+  rankBtn.disabled=false; rankBtn.textContent='🏆 登録';
+
+  // チップ生成
+  const chips=document.getElementById('preview-chips');
+  chips.innerHTML='';
+
+  if(GAME_MODE==='mix'){
+    // ミックスモード：出題された問題のみ1行で表示
+    const rowEl = document.createElement('div');
+    rowEl.className = 'chip-row';
+    chips.appendChild(rowEl);
+    questions.forEach((def)=>{
+      const a=answers.find(a=>a&&a.material===def.material);
+      const isCorrect = a && a.result==='correct';
+      const isWrong   = a && a.result==='wrong';
+      const chip=document.createElement('div');
+      let chipClass='preview-chip ';
+      if(isCorrect)    chipClass+='chip-correct';
+      else if(isWrong) chipClass+='chip-wrong';
+      else             chipClass+='chip-group-purple';
+      chip.className=chipClass;
+      chip.textContent=def.label+(def.alias?'（'+def.alias+'）':'');
+      chip.id='chip-'+def.material;
+      chip.onclick=()=>showPreviewResult(def.material);
+      rowEl.appendChild(chip);
+    });
+  } else {
+    // 通常モード：PREVIEW_ORDERでグループ行（gray除外）
+    let curGroup=null, rowEl=null;
+    PREVIEW_ORDER.filter(d=>d.group!=='purple').forEach((def)=>{
+      const a=answers.find(a=>a&&a.material===def.material);
+      const isAlias   = a && a.result==='correct' && def.alias && a.typed===def.alias;
+      const isCorrect = a && a.result==='correct' && !isAlias;
+      const isWrong   = a && a.result==='wrong';
+      if(def.group !== curGroup){
+        curGroup = def.group;
+        rowEl = document.createElement('div');
+        rowEl.className = 'chip-row';
+        chips.appendChild(rowEl);
+      }
+      const chip=document.createElement('div');
+      let chipClass='preview-chip ';
+      if(isWrong)        chipClass+='chip-wrong';
+      else if(isAlias)   chipClass+='chip-alias';
+      else if(isCorrect) chipClass+='chip-correct';
+      else               chipClass+='chip-group-'+def.group;
+      chip.className=chipClass;
+      chip.textContent=def.label+(def.alias?'（'+def.alias+'）':'');
+      chip.id='chip-'+def.material;
+      chip.onclick=()=>showPreviewResult(def.material);
+      rowEl.appendChild(chip);
+    });
+  }
+
+  // canvasをリザルトエリアに物理的に移動
+  const resultArea = document.getElementById('result-canvas-area');
+  resultArea.appendChild(canvas);
+  resultArea.appendChild(document.getElementById('hint'));
+  document.getElementById('result-screen').classList.add('show');
+  // DOMが確定してからリサイズ（rAFは環境により発火しないことがあるためsetTimeout）。
+  // チップ一覧の反映で領域高さが変わるので、確定後にもう一度サイズを合わせ直す。
+  const sizeResult = () => {
+    const w = resultArea.clientWidth, h = resultArea.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  };
+  setTimeout(() => { sizeResult(); showPreviewResult(PREVIEW_ORDER[0].material); }, 0);
+  setTimeout(sizeResult, 200);
+}
+
+// リザルト／プレビューからトップに戻る
+window.backToTop=function(){
+  // canvasをcanvas-containerに戻す
+  const cc = document.getElementById('canvas-container');
+  cc.insertBefore(canvas, cc.firstChild);
+  cc.insertBefore(document.getElementById('hint'), canvas.nextSibling);
+  document.getElementById('result-screen').classList.remove('show');
+  document.getElementById('result-score-block').style.display='';
+  document.getElementById('score-area').style.display='';
+  isPreviewMode = false;
+  document.getElementById('answer-top').classList.remove('active');
+  document.getElementById('keyboard-panel').classList.remove('active');
+  setAllTransparent();
+  currentHighlightMtl=null;
+  resize();
+  // スタート画面（overlayは固定HTMLなので表示するだけ）
+  document.getElementById('overlay').classList.remove('hidden');
+};
+
+function updateScoreUI(){
+  document.getElementById('correct-count').textContent=correctCount;
+  document.getElementById('question-num').textContent=`${currentQIndex+1}/${TOTAL_QUESTIONS}`;
+}
+function updateProgressDots(idx){
+  const el=document.getElementById('progress-quiz'); el.innerHTML='';
+  for(let i=0;i<TOTAL_QUESTIONS;i++){
+    const d=document.createElement('div'); d.className='pq-dot';
+    const a=answers[i];
+    if(a) d.classList.add(a.result==='correct'?'done-correct':'done-wrong');
+    else if(i===idx) d.classList.add('current');
+    el.appendChild(d);
+  }
+}
+
+// ===== プレビュー（フレームを見る） =====
+// トップからプレビューを開く
+window.openPreviewFromTop = function(){
+  document.getElementById('overlay').classList.add('hidden');
+  document.getElementById('answer-top').classList.remove('active'); document.getElementById('keyboard-panel').classList.remove('active');
+
+  const resultArea = document.getElementById('result-canvas-area');
+  resultArea.appendChild(canvas);
+  resultArea.appendChild(document.getElementById('hint'));
+  document.getElementById('result-screen').classList.add('show');
+  document.getElementById('result-score-block').style.display='none';
+  document.getElementById('score-area').style.display='none';
+  document.getElementById('retry-wrong-btn').style.display='none';
+
+  // プレビュー用チップをPREVIEW_ORDERで生成
+  isPreviewMode = true;
+  buildPreviewChips();
+
+  // チップ反映で領域高さが変わるため、確定後にもう一度サイズを合わせ直す
+  const sizePrev = () => {
+    const w=resultArea.clientWidth, h=resultArea.clientHeight;
+    if(!w||!h) return;
+    renderer.setSize(w,h,false);
+    camera.aspect=w/h; camera.updateProjectionMatrix();
+  };
+  setTimeout(()=>{ sizePrev(); showPreviewByMaterial(PREVIEW_ORDER[0].material); }, 0);
+  setTimeout(sizePrev, 200);
+
+  document.getElementById('result-back-btn').textContent='🏠 トップに戻る';
+};
+
+// プレビューモードからトップに戻る処理もbackToTopで共通化
+let isPreviewMode = false;
+
+// プレビュー用チップ生成（グループ色付き）
+function buildPreviewChips(){
+  const el = document.getElementById('preview-chips');
+  el.innerHTML = '';
+
+  // 修復歴に含まれる（pink・yellow・blue）グループ
+  const historyLabel = document.createElement('div');
+  historyLabel.style.cssText='font-size:14px;font-weight:700;color:#4ade80;letter-spacing:1px;padding:4px 8px;margin-bottom:4px;';
+  historyLabel.textContent='✅ 修復歴に含まれる';
+  el.appendChild(historyLabel);
+
+  let currentGroup = null;
+  let rowEl = null;
+  PREVIEW_ORDER.filter(d=>d.group!=='purple').forEach((def) => {
+    if(def.group !== currentGroup){
+      currentGroup = def.group;
+      rowEl = document.createElement('div');
+      rowEl.className = 'chip-row chip-row-' + def.group;
+      el.appendChild(rowEl);
+    }
+    const chip = document.createElement('div');
+    chip.className = 'preview-chip chip-group-' + def.group;
+    chip.id = 'pchip-' + def.material;
+    chip.textContent = def.label+(def.alias?'（'+def.alias+'）':'');
+    chip.onclick = () => showPreviewByMaterial(def.material);
+    rowEl.appendChild(chip);
+  });
+
+  // 修復歴に含まれない（gray）グループ
+  const noHistoryLabel = document.createElement('div');
+  noHistoryLabel.style.cssText='font-size:14px;font-weight:700;color:#c084fc;letter-spacing:1px;padding:4px 8px;margin-top:8px;margin-bottom:4px;';
+  noHistoryLabel.textContent='❌ 修復歴に含まれない';
+  el.appendChild(noHistoryLabel);
+
+  const grayRow = document.createElement('div');
+  grayRow.className = 'chip-row';
+  el.appendChild(grayRow);
+  PREVIEW_ORDER.filter(d=>d.group==='purple').forEach((def) => {
+    const chip = document.createElement('div');
+    chip.className = 'preview-chip chip-group-purple';
+    chip.id = 'pchip-' + def.material;
+    chip.textContent = def.label+(def.alias?'（'+def.alias+'）':'');
+    chip.onclick = () => showPreviewByMaterial(def.material);
+    grayRow.appendChild(chip);
+  });
+}
+
+// マテリアル名指定でプレビュー表示
+function showPreviewResult(material){
+  const def = PREVIEW_ORDER.find(d=>d.material===material);
+  if(!def) return;
+  previewIdx = PREVIEW_ORDER.findIndex(d=>d.material===material);
+  const a = answers.find(a=>a&&a.material===material);
+  const isWrong  = a && a.result==='wrong';
+  const isAlias  = a && a.result==='correct' && def.alias && a.typed===def.alias;
+
+  setAllTransparent();
+  currentHighlightMtl = material;
+
+  // 正解→青、エイリアス→黄、不正解→赤、出題なし→グループ色
+  if(!a){
+    meshByMaterial[material].forEach(m => m.material = groupMats[def.group]);
+  } else {
+    const matKey = isWrong ? 'highlight' : (isAlias ? 'alias' : 'correct');
+    meshByMaterial[material].forEach(m => m.material = quizMaterials[material][matKey]);
+  }
+
+  // ナビ表示
+  const nameEl = document.getElementById('preview-part-name');
+  nameEl.textContent = def.label+(def.alias?'（'+def.alias+'）':'');
+  nameEl.className = !a ? '' : (isWrong ? 'wrong-part' : 'correct-part');
+
+  const badge = document.getElementById('preview-part-badge');
+  if(!a){
+    // 今回出題されなかった骨格（誤って「正解」表示しない）
+    badge.textContent='－ 出題なし'; badge.className='';
+    document.getElementById('preview-wrong-answer').textContent='';
+  } else if(isWrong){
+    badge.textContent='✗ 不正解'; badge.className='wrong-badge';
+    let wrongMsg = a ? `あなたの答え：「${a.typed}」` : '';
+    if(GAME_MODE==='mix' && a){
+      const inHistory = QUIZ_DEFS.some(d=>d.material===material);
+      const correctHistory = inHistory?'含まれる':'含まれない';
+      const selectedHistory = a.isHistory?'含まれる':'含まれない';
+      wrongMsg += `　修復歴：${selectedHistory}→正解は「${correctHistory}」`;
+    }
+    document.getElementById('preview-wrong-answer').textContent=wrongMsg;
+  } else {
+    badge.textContent='✓ 正解'; badge.className='correct-badge';
+    if(GAME_MODE==='mix'){
+      const inHistory = QUIZ_DEFS.some(d=>d.material===material);
+      document.getElementById('preview-wrong-answer').innerHTML=
+        `<span style="color:#4ade80">修復歴：${inHistory?'含まれる':'含まれない'}</span>`;
+    } else if(isAlias){
+      document.getElementById('preview-wrong-answer').innerHTML=`<span style="color:#fbbf24">※「${def.label}」が正式名称です</span>`;
+    } else {
+      document.getElementById('preview-wrong-answer').textContent='';
+    }
+  }
+  document.getElementById('preview-counter').textContent=`${previewIdx+1} / ${PREVIEW_ORDER.length}`;
+
+  // チップ更新
+  PREVIEW_ORDER.forEach(d=>{
+    const c=document.getElementById('chip-'+d.material);
+    if(c) c.classList.toggle('active', d.material===material);
+  });
+}
+
+function showPreviewByMaterial(material){
+  const idx = PREVIEW_ORDER.findIndex(d => d.material === material);
+  if(idx < 0) return;
+  const def = PREVIEW_ORDER[idx];
+  currentHighlightMtl = def.material;
+
+  // 全部透明
+  setAllTransparent();
+
+  // グループマテリアルで光らせる
+  meshByMaterial[def.material].forEach(m => m.material = groupMats[def.group]);
+
+  // ナビ更新
+  document.getElementById('preview-part-name').textContent = def.label+(def.alias?'（'+def.alias+'）':'');
+  document.getElementById('preview-part-name').className = '';
+  document.getElementById('preview-part-badge').textContent = '';
+  document.getElementById('preview-part-badge').className = '';
+  document.getElementById('preview-wrong-answer').textContent = '';
+  document.getElementById('preview-counter').textContent = `${idx+1} / ${PREVIEW_ORDER.length}`;
+
+  // チップ更新
+  PREVIEW_ORDER.forEach(d => {
+    const c = document.getElementById('pchip-' + d.material);
+    if(c) c.classList.toggle('active', d.material === material);
+  });
+}
+
+// ◀▶ボタンもプレビューモード対応
+window.previewPrev = function(){
+  const cur = PREVIEW_ORDER.findIndex(d=>d.material===currentHighlightMtl);
+  const prev = PREVIEW_ORDER[(cur-1+PREVIEW_ORDER.length)%PREVIEW_ORDER.length].material;
+  if(isPreviewMode) showPreviewByMaterial(prev);
+  else showPreviewResult(prev);
+};
+window.previewNext = function(){
+  const cur = PREVIEW_ORDER.findIndex(d=>d.material===currentHighlightMtl);
+  const next = PREVIEW_ORDER[(cur+1)%PREVIEW_ORDER.length].material;
+  if(isPreviewMode) showPreviewByMaterial(next);
+  else showPreviewResult(next);
+};
+
+window.goTop = function(){
+  // クイズ中断してトップへ
+  quizActive = false;
+  quizSession = false;
+  document.getElementById('correct-answer-banner').classList.remove('show');
+  document.getElementById('feedback').className='';
+  currentHighlightMtl = null;
+  setAllTransparent();
+  document.getElementById('answer-top').classList.remove('active'); document.getElementById('keyboard-panel').classList.remove('active');
+  document.getElementById('result-screen').classList.remove('show');
+  document.getElementById('result-score-block').style.display='';
+  document.getElementById('score-area').style.display='';
+  isPreviewMode = false;
+  // canvasをcanvas-containerに戻す
+  const cc = document.getElementById('canvas-container');
+  const resultArea = document.getElementById('result-canvas-area');
+  if(resultArea.contains(canvas)){
+    cc.insertBefore(canvas, cc.firstChild);
+    cc.insertBefore(document.getElementById('hint'), canvas.nextSibling);
+    resize();
+  }
+  // オーバーレイ表示（overlayは固定HTMLなので表示するだけ）
+  document.getElementById('overlay').classList.remove('hidden');
+};
+
+// ===== アニメーション =====
+function animate(t){
+  requestAnimationFrame(animate);
+  controls.update();
+  if(currentHighlightMtl){
+    const pulse=0.3+Math.sin(t*0.0012)*0.25+Math.sin(t*0.0007)*0.1;
+    if(isPreviewMode){
+      groupMats.pink.emissiveIntensity   = Math.max(0.1, pulse);
+      groupMats.yellow.emissiveIntensity = Math.max(0.1, pulse * 0.9);
+      groupMats.blue.emissiveIntensity   = Math.max(0.1, pulse);
+      groupMats.purple.emissiveIntensity   = Math.max(0.1, pulse * 0.8);
+    } else {
+      const mats = quizMaterials[currentHighlightMtl];
+      mats.highlight.emissiveIntensity = Math.max(0.1, pulse);
+      mats.correct.emissiveIntensity   = Math.max(0.1, pulse);
+      mats.alias.emissiveIntensity     = Math.max(0.1, pulse * 0.9);
+    }
+  }
+  renderer.render(scene,camera);
+}
+
+function resize(){
+  const resultArea = document.getElementById('result-canvas-area');
+  const isResult = document.getElementById('result-screen').classList.contains('show');
+  const target = isResult ? resultArea : container;
+  const w = target.clientWidth, h = target.clientHeight;
+  if(!w || !h) return;
+  camera.aspect = w / h;
+  // スマホは少しズームアウトしてモデル全体をコンパクトに収める
+  camera.zoom = isMobileLayout() ? 0.75 : 1;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h, false);
+}
+window.addEventListener('resize',resize); resize();
+// クイズ開始・リザルト表示などでキャンバス領域の大きさが変わったら自動追従
+// （これがないと古い縦横比のままCSSで引き伸ばされてモデルが歪む）
+if(window.ResizeObserver){
+  const ro = new ResizeObserver(()=>resize());
+  ro.observe(container);
+  ro.observe(document.getElementById('result-canvas-area'));
+}
+
+(async()=>{
+  try{ await loadModels(); animate(0); resize(); }
+  catch(e){ console.error(e); document.getElementById('loading-msg').textContent='エラー: '+e.message; }
+})();
+
+// ===== キーボード入力をdocumentレベルで拾う（readonly維持でIME完全ブロック） =====
+document.addEventListener('keydown', function(e) {
+  // IME変換中のキーは触らない（スマホ・日本語入力対応）
+  if (e.isComposing || e.keyCode === 229) return;
+  // 不正解表示中：Enterで次の問題へ
+  if (!quizActive && quizSession && e.key === 'Enter'
+      && document.getElementById('correct-answer-banner').classList.contains('show')) {
+    e.preventDefault();
+    window.nextQuestion();
+    return;
+  }
+  if (!quizActive) return;
+  const inp = document.getElementById('answer-input');
+  if (!inp || inp.disabled) return;
+
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    window.submitAnswer();
+    return;
+  }
+
+  // スマホはネイティブキーボードでそのまま入力（以下のPC用処理はスキップ）
+  if (isMobileLayout()) return;
+
+  if (e.key === 'Backspace') {
+    e.preventDefault();
+    inp.value = inp.value.slice(0, -1);
+    return;
+  }
+
+  // IMEが起動しようとしたらブロック（e.key === 'Process' はIME変換キー）
+  if (e.key === 'Process') {
+    e.preventDefault();
+    return;
+  }
+
+  // 単一文字キー → IMEを経由せず直接挿入（readonlyなのでIME起動しない）
+  if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    e.preventDefault();
+    inp.value += e.key;
+  }
+});
+</script>
+</body>
+</html>
